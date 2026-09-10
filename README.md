@@ -36,14 +36,20 @@ There are two parts to set up, in order: the **Google Sheet backend**, then the 
 
 ## Part 2 — Cashier app (frontend)
 
-The app is a set of plain files (`frontend/` folder) that need to be hosted somewhere on the web so it can be installed on the cashier's phone as an app. It needs real web hosting (not just opened as a local file) for the offline/installable behavior to work properly.
+This has already been deployed to GitHub Pages for you. The cashier app's live address is:
 
-This has already been deployed to GitHub Pages for you at the repo `argon1199/midday-cravings-orders`.
+**https://argon1199.github.io/midday-cravings-orders/**
+
+Repo: `argon1199/midday-cravings-orders`. `backend/Code.gs` holds the Apps Script backend from Part 1; the app files (`index.html`, `style.css`, `app.js`, `config.js`, `manifest.json`, `service-worker.js`) live at the repo root, since GitHub Pages serves from the root.
+
+**One step still needed from you:** `config.js` in the repo still has the placeholder `API_URL`. Once you finish Part 1 (deploy the Apps Script Web App) and have the `/exec` URL, either send it to me to paste in, or edit `config.js` yourself on GitHub (open the file → pencil/edit icon → replace the placeholder → commit). Until that's set, the app saves orders locally fine but has nothing to sync to yet, and the menu will show "No menu loaded yet."
+
+If you ever want to change the app's look or behavior later, edit the files directly on GitHub (or ask me to). Whenever `index.html`, `style.css`, `app.js`, `config.js`, or `manifest.json` changes, also bump `CACHE_NAME` in `service-worker.js` (e.g. `mc-orders-v2` → `v3`) in the same commit — otherwise phones that already installed the app keep using their old cached copy and never see the update.
 
 ### Installing it on the cashier's phone
 
-- **Android (Chrome):** open the app URL → tap the ⋮ menu → **"Add to Home screen"** → confirm. It now opens full-screen like a normal app, and works with the phone in airplane mode.
-- **iPhone (Safari — must be Safari, not Chrome):** open the app URL → tap the Share icon → **"Add to Home Screen"** → confirm.
+- **Android (Chrome):** open the URL above → tap the ⋮ menu → **"Add to Home screen"** → confirm. It now opens full-screen like a normal app, and works with the phone in airplane mode.
+- **iPhone (Safari — must be Safari, not Chrome):** open the URL → tap the Share icon → **"Add to Home Screen"** → confirm.
 
 ### Using it
 
