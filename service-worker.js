@@ -7,7 +7,7 @@
 // phones that already installed the app keep serving the old cached files
 // indefinitely — they never notice the update.
 
-const CACHE_NAME = 'mc-orders-v2';
+const CACHE_NAME = 'mc-orders-v3';
 const APP_SHELL = [
   './',
   './index.html',
@@ -47,3 +47,4 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+ 
