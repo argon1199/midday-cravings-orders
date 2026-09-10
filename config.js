@@ -6,3 +6,4 @@
 const CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycbxWnr4dJTMUD3SRbBckC3KjqiBqwDTmbfxSuqSp72P_DvYdMSO5IZXGX8l2KMdA6f8U/exec',
 };
+ 
