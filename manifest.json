@@ -1,7 +1,7 @@
 {
   "name": "Midday Cravings — Orders",
   "short_name": "MC Orders",
-  "description": "Offline-capable order entry for Midday Cravings and Refreshment House",
+  "description": "Offline-capable order entry for Midday Cravings Refreshment House",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
@@ -17,3 +17,4 @@
     }
   ]
 }
+ 
