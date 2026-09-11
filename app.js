@@ -1,5 +1,5 @@
 /**
- * Midday Cravings and Refreshment House — cashier order app
+ * Midday Cravings Refreshment House — cashier order app
  * Works fully offline: everything is saved to localStorage on this device
  * and synced to the Google Sheet in the background whenever the app can
  * reach the internet.
@@ -12,7 +12,11 @@
 const LS_QUEUE = 'mc_orders_queue_v1';
 const LS_MENU = 'mc_menu_cache_v1';
 const LS_MENU_UPDATED = 'mc_menu_updated_v1';
-const LS_CASHIER = 'mc_cashier_name_v1';
+const LS_CASHIERS_CACHE = 'mc_cashiers_cache_v1';
+const LS_CASHIERS_UPDATED = 'mc_cashiers_updated_v1';
+const LS_SESSION = 'mc_cashier_session_v1'; // { name, loginAt }
+
+const AUTO_LOGOUT_HOUR = 22; // 10:00 PM, local device time
 
 function loadQueue() {
   try { return JSON.parse(localStorage.getItem(LS_QUEUE) || '[]'); }
@@ -28,6 +32,22 @@ function loadMenu() {
 function saveMenu(items) {
   localStorage.setItem(LS_MENU, JSON.stringify(items));
   localStorage.setItem(LS_MENU_UPDATED, new Date().toISOString());
+}
+function loadCashiers() {
+  try { return JSON.parse(localStorage.getItem(LS_CASHIERS_CACHE) || '[]'); }
+  catch (e) { return []; }
+}
+function saveCashiers(list) {
+  localStorage.setItem(LS_CASHIERS_CACHE, JSON.stringify(list));
+  localStorage.setItem(LS_CASHIERS_UPDATED, new Date().toISOString());
+}
+function loadSession() {
+  try { return JSON.parse(localStorage.getItem(LS_SESSION) || 'null'); }
+  catch (e) { return null; }
+}
+function saveSession(session) {
+  if (session) localStorage.setItem(LS_SESSION, JSON.stringify(session));
+  else localStorage.removeItem(LS_SESSION);
 }
 
 function uuid() {
@@ -51,6 +71,22 @@ function nowTimeStr() {
 function fmtMoney(n) {
   return '₱' + (Number(n) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+// Minutes between two 'HH:MM' strings, handling an order confirmed before
+// midnight and released after. Returns null if either is missing/bad.
+function turnaroundMinutes(timeOrdered, timeReceived) {
+  if (!timeOrdered || !timeReceived) return null;
+  const toMinutes = (t) => {
+    const m = /^(\d{1,2}):(\d{2})/.exec(String(t));
+    if (!m) return null;
+    return Number(m[1]) * 60 + Number(m[2]);
+  };
+  const a = toMinutes(timeOrdered);
+  const b = toMinutes(timeReceived);
+  if (a === null || b === null) return null;
+  let diff = b - a;
+  if (diff < 0) diff += 1440;
+  return diff;
+}
 
 // ---------------------------------------------------------------------
 // App state (current, unsaved order)
@@ -61,8 +97,6 @@ const state = {
   paymentMode: 'Cash',
   refNumber: '',
   lines: [], // { itemId, name, unitPrice, qty }
-  timeOrdered: null, // 'HH:MM', captured at first item add (live mode)
-  timeReceived: null,
   backfill: false,
 };
 
@@ -75,27 +109,175 @@ document.addEventListener('DOMContentLoaded', () => {
   wireOrderForm();
   wireQueueTab();
   wireSettingsTab();
+  wireLoginScreen();
 
   state.menu = loadMenu();
   renderMenu();
   renderMenuStatus();
 
-  document.getElementById('cashierName').value = localStorage.getItem(LS_CASHIER) || '';
-
   updateOnlineStatus();
-  window.addEventListener('online', () => { updateOnlineStatus(); refreshMenu(); syncQueue(); });
+  window.addEventListener('online', () => {
+    updateOnlineStatus();
+    refreshMenu();
+    refreshCashiers();
+    syncQueue();
+  });
   window.addEventListener('offline', updateOnlineStatus);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) checkAutoLogout();
+  });
 
-  refreshMenu(); // best-effort, no-op if offline
-  syncQueue();   // best-effort
-  setInterval(syncQueue, 60000); // retry every minute while app is open
+  refreshMenu();     // best-effort, no-op if offline
+  refreshCashiers();  // best-effort, no-op if offline
+  syncQueue();        // best-effort
+  setInterval(() => { syncQueue(); checkAutoLogout(); }, 60000); // every minute
 
   renderQueueTab();
+
+  if (isLoggedIn()) {
+    showLoggedInUI();
+  } else {
+    document.getElementById('appShell').hidden = true;
+    document.getElementById('loginScreen').hidden = false;
+    renderLoginScreen();
+  }
 });
 
 function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('service-worker.js').catch(() => {});
+  }
+}
+
+// ---------------------------------------------------------------------
+// Cashier login
+// ---------------------------------------------------------------------
+let loginSelectedName = null;
+
+function wireLoginScreen() {
+  document.getElementById('loginBtn').addEventListener('click', attemptLogin);
+  document.getElementById('loginPin').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') attemptLogin();
+  });
+}
+
+async function refreshCashiers() {
+  if (!navigator.onLine) return;
+  if (!CONFIG.API_URL || CONFIG.API_URL.startsWith('PASTE_')) return;
+  try {
+    const res = await fetch(CONFIG.API_URL + '?action=cashiers', { method: 'GET' });
+    const data = await res.json();
+    if (data.ok && Array.isArray(data.cashiers)) {
+      saveCashiers(data.cashiers);
+      if (!isLoggedIn()) renderLoginScreen();
+    }
+  } catch (e) {
+    // offline or unreachable — keep using whatever's cached
+  }
+}
+
+function renderLoginScreen() {
+  const cashiers = loadCashiers();
+  const list = document.getElementById('loginCashierList');
+  const pinField = document.getElementById('loginPinField');
+  const err = document.getElementById('loginError');
+  err.hidden = true;
+  pinField.hidden = true;
+  loginSelectedName = null;
+
+  if (!cashiers.length) {
+    list.innerHTML = '<p class="muted small">No cashier list loaded yet. Connect this device to the internet once, then reopen the app.</p>';
+    return;
+  }
+  list.innerHTML = cashiers.map(c =>
+    `<button type="button" class="choice-btn login-name-btn" data-name="${escapeHtml(c.name)}">${escapeHtml(c.name)}</button>`
+  ).join('');
+  list.querySelectorAll('.login-name-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectLoginName(btn.dataset.name));
+  });
+}
+
+function selectLoginName(name) {
+  loginSelectedName = name;
+  document.querySelectorAll('.login-name-btn').forEach(b => b.classList.toggle('selected', b.dataset.name === name));
+  const pinField = document.getElementById('loginPinField');
+  pinField.hidden = false;
+  const pinInput = document.getElementById('loginPin');
+  pinInput.value = '';
+  pinInput.focus();
+}
+
+function attemptLogin() {
+  const err = document.getElementById('loginError');
+  err.hidden = true;
+  if (!loginSelectedName) {
+    err.textContent = 'Pick your name first.';
+    err.hidden = false;
+    return;
+  }
+  const pin = document.getElementById('loginPin').value.trim();
+  if (!pin) {
+    err.textContent = 'Enter your PIN.';
+    err.hidden = false;
+    return;
+  }
+  const cashiers = loadCashiers();
+  const match = cashiers.find(c => c.name === loginSelectedName);
+  if (!match || String(match.pin || '') !== pin) {
+    err.textContent = 'Wrong PIN. Try again.';
+    err.hidden = false;
+    return;
+  }
+  saveSession({ name: loginSelectedName, loginAt: new Date().toISOString() });
+  showLoggedInUI();
+}
+
+function logout() {
+  saveSession(null);
+  document.getElementById('appShell').hidden = true;
+  document.getElementById('loginScreen').hidden = false;
+  renderLoginScreen();
+}
+
+function showLoggedInUI() {
+  document.getElementById('loginScreen').hidden = true;
+  document.getElementById('appShell').hidden = false;
+  const session = loadSession();
+  const name = session ? session.name : '';
+  document.getElementById('cashierBadge').textContent = name ? ('On duty: ' + name) : '';
+  document.getElementById('cashierDisplayNameSettings').textContent = name;
+}
+
+// A session is valid until the next 10:00 PM boundary after it started —
+// log in at 3pm, logged out at 10pm that night; log in at 11pm, logged out
+// at 10pm the *next* night.
+function nextLogoutBoundary(loginAtIso) {
+  const from = new Date(loginAtIso);
+  const boundary = new Date(from.getFullYear(), from.getMonth(), from.getDate(), AUTO_LOGOUT_HOUR, 0, 0, 0);
+  if (from.getTime() >= boundary.getTime()) {
+    boundary.setDate(boundary.getDate() + 1);
+  }
+  return boundary;
+}
+
+function isLoggedIn() {
+  const session = loadSession();
+  if (!session) return false;
+  const boundary = nextLogoutBoundary(session.loginAt);
+  if (Date.now() >= boundary.getTime()) {
+    saveSession(null);
+    return false;
+  }
+  return true;
+}
+
+function checkAutoLogout() {
+  if (!loadSession()) return;
+  if (!isLoggedIn()) {
+    document.getElementById('appShell').hidden = true;
+    document.getElementById('loginScreen').hidden = false;
+    renderLoginScreen();
+    showToast('Logged out automatically at 10:00 PM');
   }
 }
 
@@ -225,9 +407,6 @@ function addQty(itemId, delta) {
     }
     line = { itemId: item.itemId, name: item.name, unitPrice, qty: 0 };
     state.lines.push(line);
-    if (!state.timeOrdered && !state.backfill) {
-      state.timeOrdered = nowTimeStr();
-    }
   }
   if (!line) return;
 
@@ -237,7 +416,6 @@ function addQty(itemId, delta) {
   }
   renderMenu();
   renderOrderLines();
-  renderFulfillment();
   updateSaveButton();
 }
 
@@ -277,7 +455,6 @@ function wireOrderForm() {
       document.getElementById('backfillTimeOrdered').value = nowTimeStr();
       document.getElementById('backfillTimeReceived').value = '';
     }
-    renderFulfillment();
   });
 
   document.querySelectorAll('#orderTypeGroup .choice-btn').forEach(btn => {
@@ -302,32 +479,7 @@ function wireOrderForm() {
     state.refNumber = e.target.value;
   });
 
-  document.getElementById('markReceivedBtn').addEventListener('click', () => {
-    state.timeReceived = nowTimeStr();
-    renderFulfillment();
-  });
-
   document.getElementById('saveOrderBtn').addEventListener('click', saveOrder);
-
-  renderFulfillment();
-}
-
-function renderFulfillment() {
-  const orderedEl = document.getElementById('timeOrderedDisplay');
-  const receivedEl = document.getElementById('timeReceivedDisplay');
-  const receivedCard = document.getElementById('receivedCard');
-
-  if (state.backfill) {
-    receivedCard.hidden = true; // handled via the backfill date/time fields instead
-    return;
-  }
-  receivedCard.hidden = false;
-  orderedEl.textContent = state.timeOrdered
-    ? `Time ordered: ${state.timeOrdered} (auto-captured when you added the first item)`
-    : 'Time ordered: will be captured when you add the first item';
-  receivedEl.textContent = state.timeReceived
-    ? `Time received: ${state.timeReceived}`
-    : 'Not marked received yet';
 }
 
 function updateSaveButton() {
@@ -347,10 +499,14 @@ function saveOrder() {
     timeOrdered = document.getElementById('backfillTimeOrdered').value || '';
     timeReceived = document.getElementById('backfillTimeReceived').value || '';
   } else {
+    // Time ordered is captured right now, at the moment the order is
+    // confirmed — not earlier while items were still being added.
     date = todayStr();
-    timeOrdered = state.timeOrdered || nowTimeStr();
-    timeReceived = state.timeReceived || '';
+    timeOrdered = nowTimeStr();
+    timeReceived = ''; // marked later from the Orders tab, once it's handed over
   }
+
+  const session = loadSession();
 
   const order = {
     clientOrderId: uuid(),
@@ -362,7 +518,7 @@ function saveOrder() {
     lines: state.lines.map(l => ({
       itemName: l.name, unitPrice: l.unitPrice, qty: l.qty, lineTotal: l.unitPrice * l.qty,
     })),
-    cashier: localStorage.getItem(LS_CASHIER) || '',
+    cashier: session ? session.name : '',
     source: state.backfill ? 'backfill' : 'live',
     savedAt: new Date().toISOString(),
     status: 'pending',
@@ -373,20 +529,18 @@ function saveOrder() {
   saveQueue(queue);
 
   resetOrderForm();
-  showToast('Order saved' + (navigator.onLine ? ' — syncing…' : ' — will sync when online'));
+  showToast('Order confirmed' + (navigator.onLine ? ' — syncing…' : ' — will sync when online') +
+    '. You can start the next order now.');
   renderQueueTab();
   syncQueue();
 }
 
 function resetOrderForm() {
   state.lines = [];
-  state.timeOrdered = null;
-  state.timeReceived = null;
   state.refNumber = '';
   document.getElementById('refNumber').value = '';
   renderMenu();
   renderOrderLines();
-  renderFulfillment();
   updateSaveButton();
 
   if (state.backfill) {
@@ -396,7 +550,7 @@ function resetOrderForm() {
 }
 
 // ---------------------------------------------------------------------
-// Queue / sync
+// Queue / sync / release
 // ---------------------------------------------------------------------
 let syncing = false;
 
@@ -423,8 +577,8 @@ async function syncQueue() {
       data.results.forEach(r => { byId[r.clientOrderId] = r; });
       const updated = queue.map(o => {
         const r = byId[o.clientOrderId];
-        if (r && (r.status === 'ok' || r.status === 'duplicate')) {
-          return { ...o, status: 'synced', orderId: r.orderId };
+        if (r && (r.status === 'ok' || r.status === 'duplicate' || r.status === 'updated')) {
+          return { ...o, status: 'synced', orderId: r.orderId || o.orderId };
         }
         if (r && r.status === 'error') {
           return { ...o, status: 'error', error: r.error };
@@ -439,6 +593,23 @@ async function syncQueue() {
   } finally {
     syncing = false;
   }
+}
+
+// Cashier taps "Mark as released" for an order that's still being
+// prepared. This works whether the order has synced yet or not — it just
+// stamps the release time locally and (re-)queues it for sync. If the
+// order already made it to the sheet, the backend updates that same row
+// instead of creating a new one.
+function markReleased(clientOrderId) {
+  const queue = loadQueue();
+  const order = queue.find(o => o.clientOrderId === clientOrderId);
+  if (!order || order.timeReceived) return;
+  order.timeReceived = nowTimeStr();
+  order.status = 'pending';
+  saveQueue(queue);
+  renderQueueTab();
+  showToast('Marked released' + (navigator.onLine ? ' — syncing…' : ' — will sync when online'));
+  syncQueue();
 }
 
 function wireQueueTab() {
@@ -470,24 +641,32 @@ function renderQueueTab() {
   }
   list.innerHTML = queue.map(o => {
     const itemsSummary = o.lines.map(l => `${l.qty}× ${l.itemName}`).join(', ');
+    const released = !!o.timeReceived;
+    const turnaround = released ? turnaroundMinutes(o.timeOrdered, o.timeReceived) : null;
     return `<div class="queue-item">
       <div class="qi-top">
         <span>${escapeHtml(o.date)} ${escapeHtml(o.timeOrdered || '')}</span>
         <span class="qi-status ${o.status}">${o.status}</span>
       </div>
       <div>${escapeHtml(itemsSummary)}</div>
-      <div class="muted small">${escapeHtml(o.orderType)} · ${escapeHtml(o.paymentMode)}${o.refNumber ? ' · ' + escapeHtml(o.refNumber) : ''} · ${fmtMoney(o.total)}${o.source === 'backfill' ? ' · backfill' : ''}</div>
+      <div class="muted small">${escapeHtml(o.orderType)} · ${escapeHtml(o.paymentMode)}${o.refNumber ? ' · ' + escapeHtml(o.refNumber) : ''} · ${fmtMoney(o.total)}${o.source === 'backfill' ? ' · backfill' : ''}${o.cashier ? ' · ' + escapeHtml(o.cashier) : ''}</div>
+      ${released
+        ? `<div class="qi-turnaround">Released ${escapeHtml(o.timeReceived)}${turnaround !== null ? ' · turnaround ' + turnaround + ' min' : ''}</div>`
+        : `<button type="button" class="qi-mark-btn" data-client-id="${escapeHtml(o.clientOrderId)}">Mark as released</button>`
+      }
     </div>`;
   }).join('');
+
+  list.querySelectorAll('.qi-mark-btn').forEach(btn => {
+    btn.addEventListener('click', () => markReleased(btn.dataset.clientId));
+  });
 }
 
 // ---------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------
 function wireSettingsTab() {
-  document.getElementById('cashierName').addEventListener('change', (e) => {
-    localStorage.setItem(LS_CASHIER, e.target.value.trim());
-  });
+  document.getElementById('logoutBtn').addEventListener('click', logout);
   document.getElementById('refreshMenuBtn').addEventListener('click', () => {
     showToast('Refreshing menu…');
     refreshMenu();
@@ -510,3 +689,4 @@ function escapeHtml(s) {
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[c]));
 }
+ 
