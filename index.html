@@ -13,8 +13,29 @@
 </head>
 <body>
 
+<!-- ============ LOGIN ============ -->
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <div class="brand-lockup">Midday Cravings <span>Refreshment House</span></div>
+    <div class="section-title">Who's on duty?</div>
+    <div id="loginCashierList" class="btn-group login-name-list"></div>
+    <label id="loginPinField" hidden>PIN
+      <input type="password" inputmode="numeric" pattern="[0-9]*" id="loginPin" maxlength="6" placeholder="Enter your PIN" />
+    </label>
+    <p id="loginError" class="login-error muted small" hidden></p>
+    <button type="button" id="loginBtn" class="primary-btn">Log in</button>
+    <p class="muted small">You'll be logged out automatically at 10:00 PM each night.</p>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="appShell" hidden>
+
 <header class="topbar">
-  <div class="brand">Midday Cravings <span>&amp; Refreshment House</span></div>
+  <div class="topbar-left">
+    <div class="brand">Midday Cravings <span>Refreshment House</span></div>
+    <div id="cashierBadge" class="cashier-badge"></div>
+  </div>
   <div id="statusPill" class="status-pill offline">Offline</div>
 </header>
 
@@ -48,6 +69,7 @@
           <input type="time" id="backfillTimeReceived" />
         </label>
       </div>
+      <p class="muted small">Leave "Time received" blank if you don't know it — you can mark this order released later from the Orders tab, same as a live order.</p>
     </div>
 
     <div class="card">
@@ -86,15 +108,9 @@
       </label>
     </div>
 
-    <div class="card" id="receivedCard">
-      <div class="section-title">Fulfillment</div>
-      <div id="timeOrderedDisplay" class="muted small"></div>
-      <button type="button" id="markReceivedBtn" class="secondary-btn">Mark as received now</button>
-      <div id="timeReceivedDisplay" class="muted small"></div>
-    </div>
-
-    <button type="button" id="saveOrderBtn" class="primary-btn" disabled>Save order</button>
-    <p id="saveOrderHint" class="muted small">Add at least one item to save.</p>
+    <button type="button" id="saveOrderBtn" class="primary-btn" disabled>Confirm order</button>
+    <p id="saveOrderHint" class="muted small">Add at least one item to confirm.</p>
+    <p class="muted small">Time ordered is captured the moment you tap Confirm order. Once it's confirmed you can start the next order right away — come back to the Orders tab to mark this one released when it's handed to the customer.</p>
   </section>
 
   <!-- ============ ORDERS / QUEUE ============ -->
@@ -104,16 +120,17 @@
       <p id="queueSummary" class="muted small"></p>
       <button type="button" id="syncNowBtn" class="secondary-btn">Sync now</button>
     </div>
+    <p class="muted small">Tap "Mark as released" on an order once it's handed to the customer — that's what logs the turnaround time.</p>
     <div id="queueList" class="queue-list"></div>
   </section>
 
   <!-- ============ SETTINGS ============ -->
   <section id="tab-settings" class="tab-panel">
     <div class="card">
-      <label>Cashier name
-        <input type="text" id="cashierName" placeholder="Your name" />
-      </label>
-      <p class="muted small">Shown on synced orders so you can tell who took a sale.</p>
+      <div class="section-title">Cashier</div>
+      <p class="muted small">Logged in as <strong id="cashierDisplayNameSettings"></strong></p>
+      <button type="button" id="logoutBtn" class="secondary-btn">Log out</button>
+      <p class="muted small">You're also logged out automatically at 10:00 PM.</p>
     </div>
     <div class="card">
       <div class="section-title">Menu</div>
@@ -123,11 +140,13 @@
     </div>
     <div class="card">
       <div class="section-title">About</div>
-      <p class="muted small">Midday Cravings and Refreshment House — order entry app.<br/>Works fully offline; orders sync to Google Sheets automatically once you're back online.</p>
+      <p class="muted small">Midday Cravings Refreshment House — order entry app.<br/>Works fully offline; orders sync to Google Sheets automatically once you're back online.</p>
     </div>
   </section>
 
 </main>
+
+</div>
 
 <div id="toast" class="toast" hidden></div>
 
@@ -135,3 +154,4 @@
 <script src="app.js"></script>
 </body>
 </html>
+ 
