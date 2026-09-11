@@ -2,12 +2,12 @@
 // Data (menu + orders) lives in localStorage, handled in app.js — this
 // worker only needs to guarantee the HTML/CSS/JS/icons are available offline.
 //
-// IMPORTANT: bump CACHE_NAME (e.g. v2 -> v3) every time you edit index.html,
+// IMPORTANT: bump CACHE_NAME (e.g. v3 -> v4) every time you edit index.html,
 // style.css, app.js, config.js, or manifest.json and redeploy. Otherwise
 // phones that already installed the app keep serving the old cached files
 // indefinitely — they never notice the update.
 
-const CACHE_NAME = 'mc-orders-v3';
+const CACHE_NAME = 'mc-orders-v4';
 const APP_SHELL = [
   './',
   './index.html',
