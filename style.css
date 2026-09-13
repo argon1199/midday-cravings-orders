@@ -189,6 +189,18 @@ label input, label select {
 .order-line .ol-name { flex: 1; }
 .order-line .ol-remove { color: var(--red); font-weight: 700; margin-left: 8px; }
 
+.subtotal-row, .discount-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--muted);
+  padding-top: 4px;
+}
+.discount-row {
+  color: var(--green);
+  font-weight: 700;
+}
+
 .total-row {
   display: flex;
   justify-content: space-between;
@@ -291,4 +303,3 @@ label input, label select {
   font-size: 13px;
   z-index: 50;
 }
- 
