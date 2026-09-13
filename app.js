@@ -651,6 +651,8 @@ function saveOrder() {
     source: state.backfill ? 'backfill' : 'live',
     savedAt: new Date().toISOString(),
     status: 'pending',
+    cancelled: false,
+    cancelReason: '',
   };
 
   const queue = loadQueue();
@@ -682,9 +684,12 @@ function resetOrderForm() {
 }
 
 // ---------------------------------------------------------------------
-// Queue / sync / release
+// Queue / sync / release / cancel
 // ---------------------------------------------------------------------
 let syncing = false;
+// clientOrderId of the order currently showing its inline "reason for
+// cancelling" form on the Orders tab (only one card shows it at a time).
+let cancelPromptFor = null;
 
 async function syncQueue() {
   if (syncing) return;
@@ -735,13 +740,63 @@ async function syncQueue() {
 function markReleased(clientOrderId) {
   const queue = loadQueue();
   const order = queue.find(o => o.clientOrderId === clientOrderId);
-  if (!order || order.timeReceived) return;
+  if (!order || order.timeReceived || order.cancelled) return;
   order.timeReceived = nowTimeStr();
   order.status = 'pending';
   saveQueue(queue);
   renderQueueTab();
   showToast('Marked released' + (navigator.onLine ? ' — syncing…' : ' — will sync when online'));
   syncQueue();
+}
+
+// Shows the inline "reason for cancelling" form on that one order's card
+// (replacing its two buttons) — no native prompt/confirm dialogs, to match
+// the rest of the app and stay reliable on mobile.
+function promptCancel(clientOrderId) {
+  cancelPromptFor = clientOrderId;
+  renderQueueTab();
+  const input = document.querySelector(`.qi-cancel-reason[data-client-id="${cssEscape(clientOrderId)}"]`);
+  if (input) input.focus();
+}
+
+function dismissCancelPrompt() {
+  cancelPromptFor = null;
+  renderQueueTab();
+}
+
+function confirmCancel(clientOrderId) {
+  const input = document.querySelector(`.qi-cancel-reason[data-client-id="${cssEscape(clientOrderId)}"]`);
+  const errorEl = document.querySelector(`.qi-cancel-error[data-client-id="${cssEscape(clientOrderId)}"]`);
+  const reason = input ? input.value.trim() : '';
+  if (!reason) {
+    if (errorEl) errorEl.hidden = false;
+    if (input) input.focus();
+    return;
+  }
+
+  const queue = loadQueue();
+  const order = queue.find(o => o.clientOrderId === clientOrderId);
+  cancelPromptFor = null;
+  // Safety net matching the backend's own check — the button is already
+  // hidden once an order is released, but don't act on stale state either.
+  if (!order || order.timeReceived || order.cancelled) {
+    renderQueueTab();
+    return;
+  }
+  order.cancelled = true;
+  order.cancelReason = reason;
+  order.status = 'pending';
+  saveQueue(queue);
+  renderQueueTab();
+  showToast('Order cancelled' + (navigator.onLine ? ' — syncing…' : ' — will sync when online'));
+  syncQueue();
+}
+
+// CSS.escape isn't available in every WebView this might run in — a tiny
+// fallback so a CSS attribute-selector built from a UUID never breaks.
+function cssEscape(s) {
+  if (window.CSS && CSS.escape) return CSS.escape(s);
+  return String(s).replace(/[^a-zA-Z0-9_-]/g, c => '\\' + c);
 }
 
 function wireQueueTab() {
@@ -774,8 +829,32 @@ function renderQueueTab() {
   list.innerHTML = queue.map(o => {
     const itemsSummary = o.lines.map(l => `${l.qty}× ${l.itemName}`).join(', ');
     const released = !!o.timeReceived;
+    const cancelled = !!o.cancelled;
     const turnaround = released ? turnaroundMinutes(o.timeOrdered, o.timeReceived) : null;
-    return `<div class="queue-item">
+
+    let actionHtml;
+    if (cancelled) {
+      actionHtml = `<div class="qi-cancelled">Cancelled${o.cancelReason ? ' — ' + escapeHtml(o.cancelReason) : ''}</div>`;
+    } else if (released) {
+      actionHtml = `<div class="qi-turnaround">Released ${escapeHtml(o.timeReceived)}${turnaround !== null ? ' · turnaround ' + turnaround + ' min' : ''}</div>`;
+    } else if (cancelPromptFor === o.clientOrderId) {
+      actionHtml = `
+        <div class="qi-cancel-form">
+          <label>Reason for cancelling</label>
+          <input type="text" class="qi-cancel-reason" data-client-id="${escapeHtml(o.clientOrderId)}" placeholder="e.g. wrong item, customer changed mind">
+          <div class="qi-cancel-error" data-client-id="${escapeHtml(o.clientOrderId)}" hidden>Enter a reason to cancel this order.</div>
+          <div class="qi-cancel-form-buttons">
+            <button type="button" class="qi-cancel-confirm-btn" data-client-id="${escapeHtml(o.clientOrderId)}">Confirm cancel</button>
+            <button type="button" class="qi-cancel-dismiss-btn">Never mind</button>
+          </div>
+        </div>`;
+    } else {
+      actionHtml = `
+        <button type="button" class="qi-mark-btn" data-client-id="${escapeHtml(o.clientOrderId)}">Mark as released</button>
+        <button type="button" class="qi-cancel-btn" data-client-id="${escapeHtml(o.clientOrderId)}">Cancel order</button>`;
+    }
+
+    return `<div class="queue-item${cancelled ? ' cancelled' : ''}">
       <div class="qi-top">
         <span>${escapeHtml(o.date)} ${escapeHtml(o.timeOrdered || '')}</span>
         <span class="qi-status ${o.status}">${o.status}</span>
@@ -783,15 +862,26 @@ function renderQueueTab() {
       <div>${escapeHtml(itemsSummary)}</div>
       ${o.discountName ? `<div class="muted small">${escapeHtml(o.discountName)} applied − ${fmtMoney(o.discountAmount || 0)} off${o.discountRefId ? ' (ID ' + escapeHtml(o.discountRefId) + ')' : ''}</div>` : ''}
       <div class="muted small">${escapeHtml(o.orderType)} · ${escapeHtml(o.paymentMode)}${o.refNumber ? ' · ' + escapeHtml(o.refNumber) : ''} · ${fmtMoney(o.total)}${o.source === 'backfill' ? ' · backfill' : ''}${o.cashier ? ' · ' + escapeHtml(o.cashier) : ''}</div>
-      ${released
-        ? `<div class="qi-turnaround">Released ${escapeHtml(o.timeReceived)}${turnaround !== null ? ' · turnaround ' + turnaround + ' min' : ''}</div>`
-        : `<button type="button" class="qi-mark-btn" data-client-id="${escapeHtml(o.clientOrderId)}">Mark as released</button>`
-      }
+      ${actionHtml}
     </div>`;
   }).join('');
 
   list.querySelectorAll('.qi-mark-btn').forEach(btn => {
     btn.addEventListener('click', () => markReleased(btn.dataset.clientId));
+  });
+  list.querySelectorAll('.qi-cancel-btn').forEach(btn => {
+    btn.addEventListener('click', () => promptCancel(btn.dataset.clientId));
+  });
+  list.querySelectorAll('.qi-cancel-confirm-btn').forEach(btn => {
+    btn.addEventListener('click', () => confirmCancel(btn.dataset.clientId));
+  });
+  list.querySelectorAll('.qi-cancel-dismiss-btn').forEach(btn => {
+    btn.addEventListener('click', dismissCancelPrompt);
+  });
+  list.querySelectorAll('.qi-cancel-reason').forEach(input => {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') confirmCancel(input.dataset.clientId);
+    });
   });
 }
 
