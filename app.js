@@ -14,6 +14,8 @@ const LS_MENU = 'mc_menu_cache_v1';
 const LS_MENU_UPDATED = 'mc_menu_updated_v1';
 const LS_CASHIERS_CACHE = 'mc_cashiers_cache_v1';
 const LS_CASHIERS_UPDATED = 'mc_cashiers_updated_v1';
+const LS_DISCOUNTS_CACHE = 'mc_discounts_cache_v1';
+const LS_DISCOUNTS_UPDATED = 'mc_discounts_updated_v1';
 const LS_SESSION = 'mc_cashier_session_v1'; // { name, loginAt }
 
 const AUTO_LOGOUT_HOUR = 22; // 10:00 PM, local device time
@@ -40,6 +42,14 @@ function loadCashiers() {
 function saveCashiers(list) {
   localStorage.setItem(LS_CASHIERS_CACHE, JSON.stringify(list));
   localStorage.setItem(LS_CASHIERS_UPDATED, new Date().toISOString());
+}
+function loadDiscounts() {
+  try { return JSON.parse(localStorage.getItem(LS_DISCOUNTS_CACHE) || '[]'); }
+  catch (e) { return []; }
+}
+function saveDiscounts(list) {
+  localStorage.setItem(LS_DISCOUNTS_CACHE, JSON.stringify(list));
+  localStorage.setItem(LS_DISCOUNTS_UPDATED, new Date().toISOString());
 }
 function loadSession() {
   try { return JSON.parse(localStorage.getItem(LS_SESSION) || 'null'); }
@@ -93,6 +103,9 @@ function turnaroundMinutes(timeOrdered, timeReceived) {
 // ---------------------------------------------------------------------
 const state = {
   menu: [],
+  discounts: [],
+  discountId: null,
+  discountRefId: '',
   orderType: 'Dine-in',
   paymentMode: 'Cash',
   refNumber: '',
@@ -112,6 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
   wireLoginScreen();
 
   state.menu = loadMenu();
+  state.discounts = loadDiscounts();
   renderMenu();
   renderMenuStatus();
 
@@ -120,6 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateOnlineStatus();
     refreshMenu();
     refreshCashiers();
+    refreshDiscounts();
     syncQueue();
   });
   window.addEventListener('offline', updateOnlineStatus);
@@ -127,9 +142,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!document.hidden) checkAutoLogout();
   });
 
-  refreshMenu();     // best-effort, no-op if offline
-  refreshCashiers();  // best-effort, no-op if offline
-  syncQueue();        // best-effort
+  refreshMenu();       // best-effort, no-op if offline
+  refreshCashiers();   // best-effort, no-op if offline
+  refreshDiscounts();  // best-effort, no-op if offline
+  syncQueue();         // best-effort
   setInterval(() => { syncQueue(); checkAutoLogout(); }, 60000); // every minute
 
   renderQueueTab();
@@ -173,6 +189,22 @@ async function refreshCashiers() {
     }
   } catch (e) {
     // offline or unreachable — keep using whatever's cached
+  }
+}
+
+async function refreshDiscounts() {
+  if (!navigator.onLine) return;
+  if (!CONFIG.API_URL || CONFIG.API_URL.startsWith('PASTE_')) return;
+  try {
+    const res = await fetch(CONFIG.API_URL + '?action=discounts', { method: 'GET' });
+    const data = await res.json();
+    if (data.ok && Array.isArray(data.discounts)) {
+      state.discounts = data.discounts;
+      saveDiscounts(data.discounts);
+      renderOrderLines();
+    }
+  } catch (e) {
+    // offline or unreachable — keep using cached discounts
   }
 }
 
@@ -422,25 +454,101 @@ function addQty(itemId, delta) {
 function renderOrderLines() {
   const card = document.getElementById('orderLinesCard');
   const container = document.getElementById('orderLines');
+  const discountCard = document.getElementById('discountCard');
+
   if (!state.lines.length) {
     card.hidden = true;
+    discountCard.hidden = true;
     return;
   }
   card.hidden = false;
-  let total = 0;
+  discountCard.hidden = state.discounts.length === 0;
+
+  let subtotal = 0;
   container.innerHTML = state.lines.map(l => {
     const lineTotal = l.unitPrice * l.qty;
-    total += lineTotal;
+    subtotal += lineTotal;
     return `<div class="order-line">
       <span class="ol-name">${l.qty}× ${escapeHtml(l.name)}</span>
       <span>${fmtMoney(lineTotal)}</span>
     </div>`;
   }).join('');
+
+  const discount = selectedDiscount();
+  const discountAmount = discount ? computeDiscountAmount(subtotal, discount) : 0;
+  const total = subtotal - discountAmount;
+
+  const subtotalRow = document.getElementById('subtotalRow');
+  const discountRow = document.getElementById('discountRow');
+  if (discount && discountAmount > 0) {
+    subtotalRow.hidden = false;
+    discountRow.hidden = false;
+    document.getElementById('orderSubtotal').textContent = fmtMoney(subtotal);
+    document.getElementById('discountRowLabel').textContent = discount.name;
+    document.getElementById('discountRowAmount').textContent = '−' + fmtMoney(discountAmount);
+  } else {
+    subtotalRow.hidden = true;
+    discountRow.hidden = true;
+  }
   document.getElementById('orderTotal').textContent = fmtMoney(total);
+
+  renderDiscountGroup();
+}
+
+// ---------------------------------------------------------------------
+// Discounts / promos
+// ---------------------------------------------------------------------
+function selectedDiscount() {
+  if (!state.discountId) return null;
+  return state.discounts.find(d => d.id === state.discountId) || null;
+}
+
+function computeDiscountAmount(subtotal, discount) {
+  if (!discount) return 0;
+  let amt = discount.type === 'Fixed' ? discount.value : subtotal * (discount.value / 100);
+  amt = Math.max(0, Math.min(amt, subtotal));
+  return Math.round(amt * 100) / 100;
+}
+
+function renderDiscountGroup() {
+  const group = document.getElementById('discountGroup');
+  const refField = document.getElementById('discountRefField');
+  const refHint = document.getElementById('discountRefHint');
+  const refInput = document.getElementById('discountRefId');
+
+  const options = [{ id: '', name: 'None' }, ...state.discounts];
+  group.innerHTML = options.map(d =>
+    `<button type="button" class="choice-btn${(d.id || '') === (state.discountId || '') ? ' selected' : ''}" data-id="${escapeHtml(d.id || '')}">${escapeHtml(d.name)}</button>`
+  ).join('');
+  group.querySelectorAll('.choice-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectDiscount(btn.dataset.id));
+  });
+
+  const discount = selectedDiscount();
+  const requiresId = !!(discount && discount.requiresId);
+  refField.hidden = !requiresId;
+  refHint.hidden = !requiresId;
+  if (refInput.value !== (state.discountRefId || '')) refInput.value = state.discountRefId || '';
+}
+
+function selectDiscount(id) {
+  state.discountId = id || null;
+  if (!id) state.discountRefId = '';
+  renderOrderLines();
+  updateSaveButton();
+}
+
+function currentSubtotal() {
+  return state.lines.reduce((sum, l) => sum + l.unitPrice * l.qty, 0);
+}
+
+function currentDiscountAmount() {
+  const discount = selectedDiscount();
+  return discount ? computeDiscountAmount(currentSubtotal(), discount) : 0;
 }
 
 function currentTotal() {
-  return state.lines.reduce((sum, l) => sum + l.unitPrice * l.qty, 0);
+  return currentSubtotal() - currentDiscountAmount();
 }
 
 // ---------------------------------------------------------------------
@@ -479,19 +587,33 @@ function wireOrderForm() {
     state.refNumber = e.target.value;
   });
 
+  document.getElementById('discountRefId').addEventListener('input', (e) => {
+    state.discountRefId = e.target.value;
+    updateSaveButton();
+  });
+
   document.getElementById('saveOrderBtn').addEventListener('click', saveOrder);
 }
 
 function updateSaveButton() {
   const btn = document.getElementById('saveOrderBtn');
   const hint = document.getElementById('saveOrderHint');
-  const ok = state.lines.length > 0;
+  let ok = state.lines.length > 0;
+  let hintText = 'Add at least one item to confirm.';
+  const discount = selectedDiscount();
+  if (ok && discount && discount.requiresId && !String(state.discountRefId || '').trim()) {
+    ok = false;
+    hintText = 'Enter the ID number for this discount to confirm.';
+  }
   btn.disabled = !ok;
   hint.hidden = ok;
+  hint.textContent = hintText;
 }
 
 function saveOrder() {
   if (!state.lines.length) return;
+  const discount = selectedDiscount();
+  if (discount && discount.requiresId && !String(state.discountRefId || '').trim()) return;
 
   let date, timeOrdered, timeReceived;
   if (state.backfill) {
@@ -507,6 +629,9 @@ function saveOrder() {
   }
 
   const session = loadSession();
+  const subtotal = currentSubtotal();
+  const discountAmount = discount ? computeDiscountAmount(subtotal, discount) : 0;
+  const total = subtotal - discountAmount;
 
   const order = {
     clientOrderId: uuid(),
@@ -514,7 +639,11 @@ function saveOrder() {
     orderType: state.orderType,
     paymentMode: state.paymentMode,
     refNumber: state.paymentMode === 'Cash' ? '' : (state.refNumber || ''),
-    total: currentTotal(),
+    subtotal,
+    discountName: discount ? discount.name : '',
+    discountAmount,
+    discountRefId: discount && discount.requiresId ? String(state.discountRefId || '').trim() : '',
+    total,
     lines: state.lines.map(l => ({
       itemName: l.name, unitPrice: l.unitPrice, qty: l.qty, lineTotal: l.unitPrice * l.qty,
     })),
@@ -538,7 +667,10 @@ function saveOrder() {
 function resetOrderForm() {
   state.lines = [];
   state.refNumber = '';
+  state.discountId = null;
+  state.discountRefId = '';
   document.getElementById('refNumber').value = '';
+  document.getElementById('discountRefId').value = '';
   renderMenu();
   renderOrderLines();
   updateSaveButton();
@@ -649,6 +781,7 @@ function renderQueueTab() {
         <span class="qi-status ${o.status}">${o.status}</span>
       </div>
       <div>${escapeHtml(itemsSummary)}</div>
+      ${o.discountName ? `<div class="muted small">${escapeHtml(o.discountName)} applied − ${fmtMoney(o.discountAmount || 0)} off${o.discountRefId ? ' (ID ' + escapeHtml(o.discountRefId) + ')' : ''}</div>` : ''}
       <div class="muted small">${escapeHtml(o.orderType)} · ${escapeHtml(o.paymentMode)}${o.refNumber ? ' · ' + escapeHtml(o.refNumber) : ''} · ${fmtMoney(o.total)}${o.source === 'backfill' ? ' · backfill' : ''}${o.cashier ? ' · ' + escapeHtml(o.cashier) : ''}</div>
       ${released
         ? `<div class="qi-turnaround">Released ${escapeHtml(o.timeReceived)}${turnaround !== null ? ' · turnaround ' + turnaround + ' min' : ''}</div>`
@@ -689,4 +822,3 @@ function escapeHtml(s) {
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[c]));
 }
- 
