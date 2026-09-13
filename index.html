@@ -90,10 +90,27 @@
     <div class="card" id="orderLinesCard" hidden>
       <div class="section-title">This order</div>
       <div id="orderLines" class="order-lines"></div>
+      <div class="subtotal-row" id="subtotalRow" hidden>
+        <span>Subtotal</span>
+        <span id="orderSubtotal">₱0.00</span>
+      </div>
+      <div class="discount-row" id="discountRow" hidden>
+        <span id="discountRowLabel">Discount</span>
+        <span id="discountRowAmount">−₱0.00</span>
+      </div>
       <div class="total-row">
         <span>Total</span>
         <span id="orderTotal">₱0.00</span>
       </div>
+    </div>
+
+    <div class="card" id="discountCard" hidden>
+      <div class="section-title">Discount / Promo</div>
+      <div class="btn-group" id="discountGroup"></div>
+      <label id="discountRefField" hidden>ID number
+        <input type="text" id="discountRefId" placeholder="Senior Citizen / PWD ID number" />
+      </label>
+      <p id="discountRefHint" class="muted small" hidden>Required for this discount.</p>
     </div>
 
     <div class="card">
@@ -154,4 +171,3 @@
 <script src="app.js"></script>
 </body>
 </html>
- 
