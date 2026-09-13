@@ -7,7 +7,7 @@
 // phones that already installed the app keep serving the old cached files
 // indefinitely — they never notice the update.
 
-const CACHE_NAME = 'mc-orders-v5';
+const CACHE_NAME = 'mc-orders-v6';
 const APP_SHELL = [
   './',
   './index.html',
