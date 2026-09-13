@@ -262,6 +262,77 @@ label input, label select {
   font-size: 13px;
   font-weight: 700;
 }
+.qi-cancel-btn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 9px;
+  border: 1px solid var(--red);
+  border-radius: 8px;
+  background: white;
+  color: var(--red);
+  font-size: 13px;
+  font-weight: 700;
+}
+.qi-cancelled {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--red);
+}
+.queue-item.cancelled {
+  opacity: 0.7;
+  background: #fdf5f4;
+}
+.qi-cancel-form {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.qi-cancel-form label {
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.qi-cancel-reason {
+  display: block;
+  width: 100%;
+  padding: 9px;
+  font-size: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--text);
+  box-sizing: border-box;
+}
+.qi-cancel-error {
+  color: var(--red);
+  font-size: 12px;
+  margin-top: 6px;
+}
+.qi-cancel-form-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.qi-cancel-form-buttons .qi-cancel-confirm-btn {
+  flex: 1;
+  padding: 9px;
+  border: 1px solid var(--red);
+  border-radius: 8px;
+  background: var(--red);
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+}
+.qi-cancel-form-buttons .qi-cancel-dismiss-btn {
+  flex: 1;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
 
 .login-screen {
   min-height: 100vh;
