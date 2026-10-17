@@ -5,7 +5,7 @@
  * until this string changes, so a content change shipped without a bump is invisible
  * to every existing device.
  */
-const CACHE_VERSION = 'midday-cravings-v4';
+const CACHE_VERSION = 'midday-cravings-v5';
 
 const SHELL = ['./', './index.html', './style.css', './app.js', './config.js', './manifest.json'];
 
@@ -13,8 +13,9 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(CACHE_VERSION)
-      // Individually, so a missing config.js cannot fail the whole install.
-      .then((cache) => Promise.allSettled(SHELL.map((path) => cache.add(path))))
+      // Individually, so a missing config.js cannot fail the whole install. 'reload' skips
+      // the browser's HTTP cache, so a fresh install never saves an old file.
+      .then((cache) => Promise.allSettled(SHELL.map((path) => cache.add(new Request(path, { cache: 'reload' })))))
       .then(() => self.skipWaiting())
   );
 });
