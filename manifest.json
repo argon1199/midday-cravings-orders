@@ -1,20 +1,19 @@
 {
   "name": "Midday Cravings — Orders",
-  "short_name": "MC Orders",
-  "description": "Offline-capable order entry for Midday Cravings Refreshment House",
+  "short_name": "Midday Orders",
+  "description": "Order log for Midday Cravings Refreshment House.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#faf6f2",
-  "theme_color": "#8a3b12",
   "orientation": "portrait",
+  "background_color": "#fffaf3",
+  "theme_color": "#b4530a",
   "icons": [
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' fill='%238a3b12'/%3E%3Ccircle cx='96' cy='96' r='80' fill='%23c9601f'/%3E%3Ctext x='96' y='96' font-family='Arial, sans-serif' font-size='72' font-weight='700' fill='white' text-anchor='middle' dominant-baseline='central'%3EMC%3C/text%3E%3C/svg%3E",
-      "sizes": "192x192 512x512 any",
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%23b4530a'/%3E%3Ctext x='256' y='338' font-family='Segoe UI,Roboto,sans-serif' font-size='230' font-weight='700' fill='%23fffaf3' text-anchor='middle'%3EMC%3C/text%3E%3C/svg%3E",
+      "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
   ]
 }
- 

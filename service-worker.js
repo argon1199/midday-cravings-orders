@@ -1,49 +1,48 @@
-// Caches the app shell so the app opens with zero network requests.
-// Data (menu + orders) lives in localStorage, handled in app.js — this
-// worker only needs to guarantee the HTML/CSS/JS/icons are available offline.
-//
-// IMPORTANT: bump CACHE_NAME (e.g. v2 -> v3) every time you edit index.html,
-// style.css, app.js, config.js, or manifest.json and redeploy. Otherwise
-// phones that already installed the app keep serving the old cached files
-// indefinitely — they never notice the update.
+/* App-shell cache.
+ *
+ * BUMP CACHE_VERSION ON EVERY CHANGE to index.html, style.css, app.js, config.js or
+ * manifest.json. Phones that already installed the app keep serving the cached copies
+ * until this string changes, so a content change shipped without a bump is invisible
+ * to every existing device.
+ */
+const CACHE_VERSION = 'midday-cravings-v4';
 
-const CACHE_NAME = 'mc-orders-v6';
-const APP_SHELL = [
-  './',
-  './index.html',
-  './style.css',
-  './app.js',
-  './config.js',
-  './manifest.json',
-];
+const SHELL = ['./', './index.html', './style.css', './app.js', './config.js', './manifest.json'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
+    caches
+      .open(CACHE_VERSION)
+      // Individually, so a missing config.js cannot fail the whole install.
+      .then((cache) => Promise.allSettled(SHELL.map((path) => cache.add(path))))
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((names) =>
-      Promise.all(names.filter((n) => n !== CACHE_NAME).map((n) => caches.delete(n)))
-    )
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+  const { request } = event;
+  const url = new URL(request.url);
 
-  // Never intercept calls to the Apps Script API — those must always hit
-  // the network (or fail fast so app.js can queue the order locally).
-  if (url.origin !== self.location.origin) return;
+  // The API must always go straight to the network (or fail fast, so the app can queue
+  // the write locally). Caching it would serve stale menus and swallow sync failures.
+  if (request.method !== 'GET' || url.origin !== self.location.origin) return;
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).catch(() => caches.match('./index.html'));
+    caches.match(request).then((hit) => {
+      if (hit) return hit;
+      return fetch(request).catch(() => {
+        if (request.mode === 'navigate') return caches.match('./index.html');
+        return Response.error();
+      });
     })
   );
 });
