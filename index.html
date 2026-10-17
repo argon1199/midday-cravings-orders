@@ -1,173 +1,136 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#B4530A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Midday Cravings">
 <title>Midday Cravings — Orders</title>
-<meta name="theme-color" content="#8a3b12" />
-<link rel="manifest" href="manifest.json" />
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' fill='%238a3b12'/%3E%3Ccircle cx='96' cy='96' r='80' fill='%23c9601f'/%3E%3Ctext x='96' y='96' font-family='Arial, sans-serif' font-size='72' font-weight='700' fill='white' text-anchor='middle' dominant-baseline='central'%3EMC%3C/text%3E%3C/svg%3E" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<link rel="stylesheet" href="style.css" />
+<link rel="manifest" href="./manifest.json">
+<link rel="stylesheet" href="./style.css">
 </head>
 <body>
 
-<!-- ============ LOGIN ============ -->
-<div id="loginScreen" class="login-screen">
+<!-- Login ---------------------------------------------------------------- -->
+<section id="login" class="screen login">
   <div class="login-card">
-    <div class="brand-lockup">Midday Cravings <span>Refreshment House</span></div>
-    <div class="section-title">Who's on duty?</div>
-    <div id="loginCashierList" class="btn-group login-name-list"></div>
-    <label id="loginPinField" hidden>PIN
-      <input type="password" inputmode="numeric" pattern="[0-9]*" id="loginPin" maxlength="6" placeholder="Enter your PIN" />
-    </label>
-    <p id="loginError" class="login-error muted small" hidden></p>
-    <button type="button" id="loginBtn" class="primary-btn">Log in</button>
-    <p class="muted small">You'll be logged out automatically at 10:00 PM each night.</p>
+    <h1 class="brand">Midday Cravings</h1>
+    <p class="brand-sub">Refreshment House · Order log</p>
+
+    <p class="label">Who's on the till?</p>
+    <div id="login-cashiers" class="cashier-picker"></div>
+
+    <label class="label" for="login-pin">PIN</label>
+    <input id="login-pin" type="password" inputmode="numeric" autocomplete="off" placeholder="••••">
+
+    <p id="login-error" class="inline-error" hidden></p>
+    <button id="login-submit" class="btn btn-primary btn-block">Log in</button>
+    <p id="login-hint" class="hint"></p>
   </div>
-</div>
+</section>
 
-<!-- ============ APP ============ -->
-<div id="appShell" hidden>
+<!-- App ------------------------------------------------------------------ -->
+<section id="app" class="screen" hidden>
+  <header class="topbar">
+    <div>
+      <span class="topbar-title">Midday Cravings</span>
+      <span id="topbar-who" class="topbar-who"></span>
+    </div>
+    <span id="net-pill" class="pill">·</span>
+  </header>
 
-<header class="topbar">
-  <div class="topbar-left">
-    <div class="brand">Midday Cravings <span>Refreshment House</span></div>
-    <div id="cashierBadge" class="cashier-badge"></div>
-  </div>
-  <div id="statusPill" class="status-pill offline">Offline</div>
-</header>
+  <nav class="tabs" id="tabs">
+    <button class="tab is-active" data-tab="new">New order</button>
+    <button class="tab" data-tab="orders">Orders <span id="tab-orders-count" class="count"></span></button>
+    <button class="tab" data-tab="summary">Summary</button>
+    <button class="tab" data-tab="settings">Settings</button>
+  </nav>
 
-<nav class="tabs">
-  <button class="tab-btn active" data-tab="order">New Order</button>
-  <button class="tab-btn" data-tab="queue">Orders <span id="pendingBadge" class="badge" hidden>0</span></button>
-  <button class="tab-btn" data-tab="settings">Settings</button>
-</nav>
-
-<main>
-
-  <!-- ============ NEW ORDER ============ -->
-  <section id="tab-order" class="tab-panel active">
-
-    <div class="field-row">
-      <label class="switch-label">
-        <input type="checkbox" id="backfillToggle" />
-        Backfill a past order
+  <main>
+    <!-- New order -->
+    <div class="panel is-active" data-panel="new">
+      <label class="switch">
+        <input type="checkbox" id="backfill-toggle">
+        <span>Backfill a past order (from the paper log)</span>
       </label>
-    </div>
 
-    <div id="backfillFields" class="card" hidden>
-      <label>Date of sale
-        <input type="date" id="backfillDate" />
-      </label>
-      <div class="two-col">
-        <label>Time ordered
-          <input type="time" id="backfillTimeOrdered" />
-        </label>
-        <label>Time received
-          <input type="time" id="backfillTimeReceived" />
-        </label>
+      <div id="backfill-fields" class="card backfill" hidden>
+        <div class="field"><label for="bf-date">Date</label><input type="date" id="bf-date"></div>
+        <div class="field"><label for="bf-ordered">Time ordered</label><input type="time" id="bf-ordered"></div>
+        <div class="field"><label for="bf-received">Time received <span class="muted">(optional)</span></label><input type="time" id="bf-received"></div>
       </div>
-      <p class="muted small">Leave "Time received" blank if you don't know it — you can mark this order released later from the Orders tab, same as a live order.</p>
+
+      <div class="card">
+        <p class="label">Order type</p>
+        <div class="chips" id="order-type"></div>
+      </div>
+
+      <div id="menu-list"></div>
+
+      <div class="card" id="discount-card" hidden>
+        <p class="label">Discount / promo</p>
+        <div class="chips" id="discount-picker"></div>
+        <div class="field" id="discount-id-field" hidden>
+          <label for="discount-ref">ID number <span class="req">required</span></label>
+          <input type="text" id="discount-ref" placeholder="e.g. SC-0012345" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="label">Payment</p>
+        <div class="chips" id="payment-mode"></div>
+        <div class="field" id="ref-field" hidden>
+          <label for="ref-number">Reference no. <span class="muted">(optional)</span></label>
+          <input type="text" id="ref-number" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="card summary" id="order-summary"></div>
+
+      <p id="confirm-error" class="inline-error" hidden></p>
+      <button id="confirm-order" class="btn btn-primary btn-block" disabled>Confirm order</button>
     </div>
 
-    <div class="card">
-      <div class="section-title">Order type</div>
-      <div class="btn-group" id="orderTypeGroup">
-        <button type="button" class="choice-btn selected" data-value="Dine-in">Dine-in</button>
-        <button type="button" class="choice-btn" data-value="Take-out">Take-out</button>
+    <!-- Orders -->
+    <div class="panel" data-panel="orders">
+      <div id="orders-list"></div>
+    </div>
+
+    <!-- Summary -->
+    <div class="panel" data-panel="summary">
+      <div id="summary-body"></div>
+    </div>
+
+    <!-- Settings -->
+    <div class="panel" data-panel="settings">
+      <div class="card">
+        <p class="label">Signed in</p>
+        <p id="settings-who" class="big"></p>
+        <p id="settings-expiry" class="hint"></p>
+        <button class="btn btn-block" data-action="logout">Log out</button>
+      </div>
+      <div class="card">
+        <p class="label">Menu &amp; settings data</p>
+        <p id="settings-cache" class="hint"></p>
+        <button class="btn btn-block" data-action="refresh-menu">Refresh menu now</button>
+      </div>
+      <div class="card">
+        <p class="label">About</p>
+        <p class="hint">
+          Order log for Midday Cravings Refreshment House. Orders are saved on this phone first
+          and sent to the records automatically whenever there's signal — so you can keep taking
+          orders with no internet at all. PIN sign-in records who rang up each order; it is a duty
+          log, not a security lock.
+        </p>
+        <p class="hint" id="about-build"></p>
       </div>
     </div>
+  </main>
+</section>
 
-    <div class="card">
-      <div class="section-title">Items</div>
-      <div id="menuList" class="menu-list">
-        <p class="muted">Loading menu…</p>
-      </div>
-    </div>
-
-    <div class="card" id="orderLinesCard" hidden>
-      <div class="section-title">This order</div>
-      <div id="orderLines" class="order-lines"></div>
-      <div class="subtotal-row" id="subtotalRow" hidden>
-        <span>Subtotal</span>
-        <span id="orderSubtotal">₱0.00</span>
-      </div>
-      <div class="discount-row" id="discountRow" hidden>
-        <span id="discountRowLabel">Discount</span>
-        <span id="discountRowAmount">−₱0.00</span>
-      </div>
-      <div class="total-row">
-        <span>Total</span>
-        <span id="orderTotal">₱0.00</span>
-      </div>
-    </div>
-
-    <div class="card" id="discountCard" hidden>
-      <div class="section-title">Discount / Promo</div>
-      <div class="btn-group" id="discountGroup"></div>
-      <label id="discountRefField" hidden>ID number
-        <input type="text" id="discountRefId" placeholder="Senior Citizen / PWD ID number" />
-      </label>
-      <p id="discountRefHint" class="muted small" hidden>Required for this discount.</p>
-    </div>
-
-    <div class="card">
-      <div class="section-title">Payment</div>
-      <div class="btn-group" id="paymentGroup">
-        <button type="button" class="choice-btn selected" data-value="Cash">Cash</button>
-        <button type="button" class="choice-btn" data-value="GCash">GCash</button>
-        <button type="button" class="choice-btn" data-value="Bank Transfer">Bank Transfer</button>
-      </div>
-      <label id="refNumberField" hidden>Reference number
-        <input type="text" id="refNumber" placeholder="e.g. GC123456789" />
-      </label>
-    </div>
-
-    <button type="button" id="saveOrderBtn" class="primary-btn" disabled>Confirm order</button>
-    <p id="saveOrderHint" class="muted small">Add at least one item to confirm.</p>
-    <p class="muted small">Time ordered is captured the moment you tap Confirm order. Once it's confirmed you can start the next order right away — come back to the Orders tab to mark this one released when it's handed to the customer.</p>
-  </section>
-
-  <!-- ============ ORDERS / QUEUE ============ -->
-  <section id="tab-queue" class="tab-panel">
-    <div class="card">
-      <div class="section-title">Sync</div>
-      <p id="queueSummary" class="muted small"></p>
-      <button type="button" id="syncNowBtn" class="secondary-btn">Sync now</button>
-    </div>
-    <p class="muted small">Tap "Mark as released" on an order once it's handed to the customer — that's what logs the turnaround time.</p>
-    <div id="queueList" class="queue-list"></div>
-  </section>
-
-  <!-- ============ SETTINGS ============ -->
-  <section id="tab-settings" class="tab-panel">
-    <div class="card">
-      <div class="section-title">Cashier</div>
-      <p class="muted small">Logged in as <strong id="cashierDisplayNameSettings"></strong></p>
-      <button type="button" id="logoutBtn" class="secondary-btn">Log out</button>
-      <p class="muted small">You're also logged out automatically at 10:00 PM.</p>
-    </div>
-    <div class="card">
-      <div class="section-title">Menu</div>
-      <p id="menuStatus" class="muted small"></p>
-      <button type="button" id="refreshMenuBtn" class="secondary-btn">Refresh menu now</button>
-      <p class="muted small">The menu (items &amp; prices) refreshes automatically whenever you're online. It's saved on this device so it still shows up offline.</p>
-    </div>
-    <div class="card">
-      <div class="section-title">About</div>
-      <p class="muted small">Midday Cravings Refreshment House — order entry app.<br/>Works fully offline; orders sync to Google Sheets automatically once you're back online.</p>
-    </div>
-  </section>
-
-</main>
-
-</div>
-
-<div id="toast" class="toast" hidden></div>
-
-<script src="config.js"></script>
-<script src="app.js"></script>
+<script src="./config.js"></script>
+<script src="./app.js"></script>
 </body>
 </html>
